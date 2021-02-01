@@ -12,16 +12,15 @@ import sys
 import tempfile
 import secrets
 from clang.cindex import *
+from pprint import pprint
 
 class structo:
-    def __init__(self,hdr1fn,hdr2fn):
+    def __init__(self):
         Config.set_library_file("/Library/Developer/CommandLineTools/usr/lib/libclang.dylib") # mac port
         self.__index = Index.create()
         
         self.__structs = [] # list of parsed structs to operate on
         self.__offsets = [] # our built offsets for the structs
-        self.__structs.append(self.__index.parse(hdr1fn))
-        self.__structs.append(self.__index.parse(hdr2fn))
 
     def __find_struct(self,node):
     #
@@ -58,7 +57,7 @@ class structo:
             curroffset += c.type.get_size()
         return offsets
 
-    def create_offsets(self):
+    def __create_offsets(self):
     #
     # create an offsets data structure for each struct
     #
@@ -73,7 +72,6 @@ class structo:
     # 
     # debug function for listing struct info
     # 
-        from pprint import pprint
         i = 0
         for off in self.__offsets:
             print("[*] Offsets for struct #%u" % i)
@@ -108,6 +106,9 @@ class structo:
         structnode = self.__find_struct(node)
         offsets = self.__struct_to_offsets(structnode)
 
+        print("parsed struct:")
+        pprint(offsets)
+
         newoffsets = []
         tu = self.__parse_from_mem(ccode)
         node = tu.cursor
@@ -139,6 +140,8 @@ class structo:
                             raise ValueError("Pad not large enough to house new type.. Fail")
                         continue
             newoffsets.append(offsets[i]) 
+            print("newoffsets:")
+            pprint(newoffsets)
         return self.__offsets_to_c(structnode.spelling,newoffsets)
 
     def __validate_offsets(self,offsets):
@@ -180,12 +183,16 @@ class structo:
             newoffsets.append({"name": newname, "size": tsz - end, "offset": end, "type": "unsigned char [%u]" % (tsz-end)})
         return newoffsets
 	
-    def merge_structs(self):
+    def merge_structs(self,hdr1fn,hdr2fn):
     #
     # Merge the two structs in our example and returna c representation of the new struct
     #
         nopads = [] # temporary array to store non pad elements
         newoffsets = [] # create our new offsets array to represent the merge of two structs
+
+        self.__structs.append(self.__index.parse(hdr1fn))
+        self.__structs.append(self.__index.parse(hdr2fn))
+        self.__create_offsets()
     
         node = self.__structs[0].cursor
         structnode = self.__find_struct(node)  # use this to get the name for our new struct
@@ -222,22 +229,16 @@ def main(argv):
     hdr2fn = argv[2]
 
     print("[+] Parsing our header files (%s) (%s)" % (hdr1fn,hdr2fn))
-    s = structo(hdr1fn,hdr2fn)
+    s = structo()
     
-    print("[+] Creating offset metadata")
-    s.create_offsets()
-
-    print("[+] Parsed structs:")
-    s.dump_structs()
-
     print("[+] Merging structs")
-    result = s.merge_structs()
+    result = s.merge_structs(hdr1fn,hdr2fn)
     
     print("[+] Merged struct:")
     print(result)
 
     print("[+] Inserting element into struct.")
-    print(s.insert_element(result,38,"int bob;")) # test XXX
+    print(s.insert_element(result,56,"int bob;")) # test XXX
 
 if __name__ == "__main__":
     main(sys.argv)
